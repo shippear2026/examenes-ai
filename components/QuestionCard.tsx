@@ -274,7 +274,7 @@ export default function QuestionCard({
             color: "var(--muted)",
           }}
         >
-          Pregunta de desarrollo — respuesta abierta del alumno.
+          Pregunta de desarrollo - respuesta abierta del alumno.
         </div>
       )}
 
