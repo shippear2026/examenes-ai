@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import DropZone from "./DropZone";
 import TemplateSelector, { type TemplateId } from "./TemplateSelector";
 import GeneratingOverlay from "./GeneratingOverlay";
 
 export default function LandingPage() {
+  const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [prompt, setPrompt] = useState("");
   const [template, setTemplate] = useState<TemplateId>("university");
@@ -20,8 +22,8 @@ export default function LandingPage() {
 
   const handleGenerateComplete = useCallback(() => {
     setIsGenerating(false);
-    // TODO: navigate to /editor
-  }, []);
+    router.push("/editor");
+  }, [router]);
 
   return (
     <>
