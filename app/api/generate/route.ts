@@ -1,45 +1,42 @@
 import { NextResponse } from "next/server";
+import { generateObject } from "ai";
+import { z } from "zod";
 import type { Question, QuestionType } from "@/lib/types";
 
 export const maxDuration = 60;
 
-const GEMINI_MODEL = "gemini-flash-latest";
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+// Usamos el AI Gateway de Vercel (AI_GATEWAY_API_KEY ya está disponible en el proyecto).
+const MODEL = "google/gemini-3.5-flash";
 
-const QUESTIONS_SCHEMA = {
-  type: "object",
-  properties: {
-    questions: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          type: {
-            type: "string",
-            enum: ["multiple_choice", "development", "true_false"],
-          },
-          text: { type: "string" },
-          options: {
-            type: "array",
-            items: { type: "string" },
-            description: "Solo si type es multiple_choice. 4 opciones.",
-          },
-          correctAnswer: { type: "string" },
-          sourcePage: {
-            type: "number",
-            description:
-              "Número de página del PDF de donde sale la pregunta, si el texto trae marcas de página (ej. [[page:3]]). Omitir si no hay marcas.",
-          },
-        },
-        required: ["type", "text", "correctAnswer"],
-      },
-    },
-  },
-  required: ["questions"],
-};
+const questionSchema = z.object({
+  type: z.enum(["multiple_choice", "development", "true_false"]),
+  text: z.string().describe("El enunciado de la pregunta."),
+  options: z
+    .array(z.string())
+    .optional()
+    .describe("Solo si type es multiple_choice: exactamente 4 opciones."),
+  correctAnswer: z.string().describe("La respuesta correcta."),
+  sourcePage: z
+    .number()
+    .optional()
+    .describe(
+      "Número de página del PDF de donde sale la pregunta, si el texto trae marcas tipo [[page:N]]. Omitir si no hay marcas."
+    ),
+});
 
-function buildPrompt(text: string, subject: string | undefined, questionType: QuestionType, count: number) {
-  return `Sos un generador de exámenes${subject ? ` de ${subject}` : ""}. A partir del siguiente material de estudio, generá exactamente ${count} preguntas de tipo "${questionType}".
+const responseSchema = z.object({
+  questions: z.array(questionSchema),
+});
+
+function buildPrompt(
+  text: string,
+  subject: string | undefined,
+  questionType: QuestionType,
+  count: number
+) {
+  return `Sos un generador de exámenes${
+    subject ? ` de ${subject}` : ""
+  }. A partir del siguiente material de estudio, generá exactamente ${count} preguntas de tipo "${questionType}".
 
 Reglas:
 - Si el tipo es "multiple_choice": incluí 4 opciones en "options" y la respuesta correcta (texto exacto, igual a una de las opciones) en "correctAnswer".
@@ -70,49 +67,13 @@ export async function POST(req: Request) {
   }
 
   try {
-    const geminiRes = await fetch(`${GEMINI_URL}?key=${process.env.GEMINI_API_KEY}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: buildPrompt(text, subject, questionType, count) }] }],
-        generationConfig: {
-          responseMimeType: "application/json",
-          responseSchema: QUESTIONS_SCHEMA,
-        },
-      }),
+    const { object } = await generateObject({
+      model: MODEL,
+      schema: responseSchema,
+      prompt: buildPrompt(text, subject, questionType, count),
     });
 
-    if (!geminiRes.ok) {
-      const errBody = await geminiRes.text();
-      console.error("Error de Gemini API:", geminiRes.status, errBody);
-      return NextResponse.json(
-        { error: `Gemini API devolvió ${geminiRes.status}. Revisá GEMINI_API_KEY y los logs del server.` },
-        { status: 502 }
-      );
-    }
-
-    const data = await geminiRes.json();
-    const raw: string | undefined = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!raw) {
-      console.error("Respuesta inesperada de Gemini:", JSON.stringify(data));
-      return NextResponse.json(
-        { error: "Gemini no devolvió contenido" },
-        { status: 502 }
-      );
-    }
-
-    let parsed: { questions: Omit<Question, "id">[] };
-    try {
-      parsed = JSON.parse(raw) as { questions: Omit<Question, "id">[] };
-    } catch (parseErr) {
-      console.error("No se pudo parsear el JSON de Gemini:", raw, parseErr);
-      return NextResponse.json(
-        { error: "Gemini no devolvió un JSON válido de preguntas" },
-        { status: 502 }
-      );
-    }
-
-    const withIds: Question[] = parsed.questions.map((q, i) => ({
+    const withIds: Question[] = object.questions.map((q, i) => ({
       id: `q${i + 1}`,
       ...q,
     }));
@@ -121,7 +82,10 @@ export async function POST(req: Request) {
   } catch (err) {
     console.error("Error generando preguntas:", err);
     return NextResponse.json(
-      { error: "Falló la generación con Gemini. Revisá GEMINI_API_KEY y los logs del server." },
+      {
+        error:
+          "Falló la generación de preguntas. Revisá los logs del servidor.",
+      },
       { status: 500 }
     );
   }
