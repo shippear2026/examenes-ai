@@ -57,4 +57,25 @@
 body {
   background: var(--background);
   color: var(--foreground);
+  /* Texto base más grande para lectura cómoda de personas mayores o con
+     poca experiencia. */
+  font-size: 1.125rem;
+  line-height: 1.6;
+}
+
+/* Foco muy visible en todos los controles: clave para accesibilidad. */
+*:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Respeta a quienes prefieren menos movimiento. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
 }
