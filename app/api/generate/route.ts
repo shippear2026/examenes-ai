@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 import { generateObject } from "ai";
 import { z } from "zod";
+import { examModel } from "@/lib/ai";
 import type { Question, QuestionType } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
-
-const MODEL = "google/gemini-3.5-flash";
 
 const questionSchema = z.object({
   type: z.enum(["multiple_choice", "development", "true_false"]),
@@ -58,7 +57,7 @@ export async function POST(req: Request) {
       : "Elegí el tipo de pregunta más apropiado para cada caso.";
 
     const { object } = await generateObject({
-      model: MODEL,
+      model: examModel,
       schema: responseSchema,
       system: `Sos un agente generador de preguntas de examen universitario.
 A partir de un fragmento de bibliografía académica y la descripción del docente,
