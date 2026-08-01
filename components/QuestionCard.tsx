@@ -9,6 +9,7 @@ interface QuestionCardProps {
   onUpdate: (id: string, changes: Partial<Question>) => void;
   onRegenerate: (id: string) => void;
   onDiscard: (id: string) => void;
+  isRegenerating?: boolean;
 }
 
 const TYPE_LABELS: Record<Question["type"], string> = {
@@ -23,6 +24,7 @@ export default function QuestionCard({
   onUpdate,
   onRegenerate,
   onDiscard,
+  isRegenerating = false,
 }: QuestionCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(question.text);
@@ -70,8 +72,6 @@ export default function QuestionCard({
     next[idx] = value;
     setEditOptions(next);
   }
-
-  const isRegenerating = false; // placeholder for future async state
 
   return (
     <article
@@ -369,7 +369,7 @@ export default function QuestionCard({
                   strokeLinejoin="round"
                 />
               </svg>
-              Regenerar
+              {isRegenerating ? "Regenerando..." : "Regenerar"}
             </button>
 
             {/* Discard */}

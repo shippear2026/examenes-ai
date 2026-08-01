@@ -1,14 +1,48 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import QuestionCard from "./QuestionCard";
 import { mockQuestions } from "@/lib/mockQuestions";
 import type { Question } from "@/lib/types";
+import { EXAM_STORAGE_KEY, EXAM_SOURCE_KEY, type ExamSource } from "@/lib/examStorage";
 
 export default function EditorPage() {
   const router = useRouter();
-  const [questions, setQuestions] = useState<Question[]>(mockQuestions);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [source, setSource] = useState<ExamSource | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [regenerating, setRegenerating] = useState<string | null>(null);
+
+  // Cargamos el examen generado desde sessionStorage (handoff desde la landing).
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(EXAM_STORAGE_KEY);
+      const rawSource = sessionStorage.getItem(EXAM_SOURCE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Question[];
+        setQuestions(Array.isArray(parsed) && parsed.length > 0 ? parsed : mockQuestions);
+      } else {
+        // Acceso directo / recarga sin datos: mostramos el ejemplo.
+        setQuestions(mockQuestions);
+      }
+      if (rawSource) setSource(JSON.parse(rawSource) as ExamSource);
+    } catch {
+      setQuestions(mockQuestions);
+    } finally {
+      setLoaded(true);
+    }
+  }, []);
+
+  // Mantenemos sessionStorage sincronizado con las ediciones del usuario.
+  useEffect(() => {
+    if (!loaded) return;
+    try {
+      sessionStorage.setItem(EXAM_STORAGE_KEY, JSON.stringify(questions));
+    } catch {
+      /* almacenamiento no disponible: ignoramos */
+    }
+  }, [questions, loaded]);
 
   function handleUpdate(id: string, changes: Partial<Question>) {
     setQuestions((prev) =>
@@ -16,9 +50,34 @@ export default function EditorPage() {
     );
   }
 
-  function handleRegenerate(id: string) {
-    // TODO: call AI API to regenerate a single question
-    // For now, pulse a visual indicator (no-op)
+  async function handleRegenerate(id: string) {
+    const target = questions.find((q) => q.id === id);
+    if (!target || !source || regenerating) return;
+
+    setRegenerating(id);
+    try {
+      const res = await fetch("/api/generate/regenerate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fullText: source.fullText,
+          prompt: source.prompt,
+          template: source.template,
+          previous: target,
+          existingTexts: questions.filter((q) => q.id !== id).map((q) => q.text),
+        }),
+      });
+      if (!res.ok) return;
+      const { question } = (await res.json()) as { question: Question };
+      // Conservamos el id original para no perder posición ni referencias.
+      setQuestions((prev) =>
+        prev.map((q) => (q.id === id ? { ...question, id } : q))
+      );
+    } catch {
+      /* error silencioso: la pregunta original se mantiene */
+    } finally {
+      setRegenerating(null);
+    }
   }
 
   function handleDiscard(id: string) {
@@ -186,6 +245,7 @@ export default function EditorPage() {
               onUpdate={handleUpdate}
               onRegenerate={handleRegenerate}
               onDiscard={handleDiscard}
+              isRegenerating={regenerating === q.id}
             />
           ))}
         </div>

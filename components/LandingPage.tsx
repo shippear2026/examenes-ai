@@ -4,7 +4,9 @@ import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import DropZone from "./DropZone";
 import TemplateSelector, { type TemplateId } from "./TemplateSelector";
-import GeneratingOverlay from "./GeneratingOverlay";
+import GeneratingOverlay, { type GenerationPhase } from "./GeneratingOverlay";
+import type { ExtractResponse, Question } from "@/lib/types";
+import { EXAM_STORAGE_KEY, EXAM_SOURCE_KEY } from "@/lib/examStorage";
 
 export default function LandingPage() {
   const router = useRouter();
@@ -12,23 +14,89 @@ export default function LandingPage() {
   const [prompt, setPrompt] = useState("");
   const [template, setTemplate] = useState<TemplateId>("university");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [phase, setPhase] = useState<GenerationPhase>("extract");
+  const [error, setError] = useState<string | null>(null);
 
   const canGenerate = !!file && prompt.trim().length > 0;
 
+  const runPipeline = useCallback(async () => {
+    if (!file) return;
+    setError(null);
+    setIsGenerating(true);
+    setPhase("extract");
+
+    try {
+      // 1) Extraer texto del PDF.
+      const form = new FormData();
+      form.append("file", file);
+      const exRes = await fetch("/api/extract", { method: "POST", body: form });
+      if (!exRes.ok) {
+        const { error: msg } = await exRes.json().catch(() => ({ error: "" }));
+        throw new Error(msg || "No pudimos leer el PDF. Probá con otro archivo.");
+      }
+      const extracted = (await exRes.json()) as ExtractResponse;
+
+      // 2) Generar el examen con los dos agentes de IA.
+      setPhase("generate");
+      const genRes = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fullText: extracted.fullText,
+          prompt: prompt.trim(),
+          template,
+        }),
+      });
+      if (!genRes.ok) {
+        const { error: msg } = await genRes.json().catch(() => ({ error: "" }));
+        throw new Error(msg || "No se pudo generar el examen. Intentá de nuevo.");
+      }
+      const { questions } = (await genRes.json()) as { questions: Question[] };
+
+      if (!questions || questions.length === 0) {
+        throw new Error("El modelo no devolvió preguntas. Ajustá tu descripción.");
+      }
+
+      // 3) Guardar el resultado para el editor (handoff entre páginas).
+      sessionStorage.setItem(EXAM_STORAGE_KEY, JSON.stringify(questions));
+      sessionStorage.setItem(
+        EXAM_SOURCE_KEY,
+        JSON.stringify({
+          fullText: extracted.fullText,
+          prompt: prompt.trim(),
+          template,
+          filename: extracted.filename,
+        }),
+      );
+
+      setPhase("done");
+      router.push("/editor");
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Ocurrió un error inesperado.";
+      setError(message);
+    }
+  }, [file, prompt, template, router]);
+
   const handleGenerate = () => {
     if (!canGenerate) return;
-    setIsGenerating(true);
+    void runPipeline();
   };
 
-  const handleGenerateComplete = useCallback(() => {
+  const handleCancel = useCallback(() => {
     setIsGenerating(false);
-    router.push("/editor");
-  }, [router]);
+    setError(null);
+  }, []);
 
   return (
     <>
       {isGenerating && (
-        <GeneratingOverlay onComplete={handleGenerateComplete} />
+        <GeneratingOverlay
+          phase={phase}
+          error={error}
+          onRetry={() => void runPipeline()}
+          onCancel={handleCancel}
+        />
       )}
 
       <div className="flex flex-col flex-1 min-h-screen">
