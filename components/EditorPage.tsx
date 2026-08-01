@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import QuestionCard from "./QuestionCard";
 import { mockQuestions } from "@/lib/mockQuestions";
@@ -8,7 +8,33 @@ import type { Question } from "@/lib/types";
 
 export default function EditorPage() {
   const router = useRouter();
-  const [questions, setQuestions] = useState<Question[]>(mockQuestions);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
+
+  // Load questions from localStorage (written by LandingPage pipeline)
+  // Fall back to mock data when navigating directly for development
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("copiloto_questions");
+      if (stored) {
+        const parsed: Question[] = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setQuestions(parsed);
+          return;
+        }
+      }
+    } catch {
+      // ignore parse errors
+    }
+    setQuestions(mockQuestions);
+  }, []);
+
+  // Persist questions back to localStorage on every change
+  useEffect(() => {
+    if (questions.length > 0) {
+      localStorage.setItem("copiloto_questions", JSON.stringify(questions));
+    }
+  }, [questions]);
 
   function handleUpdate(id: string, changes: Partial<Question>) {
     setQuestions((prev) =>
@@ -16,9 +42,36 @@ export default function EditorPage() {
     );
   }
 
-  function handleRegenerate(id: string) {
-    // TODO: call AI API to regenerate a single question
-    // For now, pulse a visual indicator (no-op)
+  async function handleRegenerate(id: string) {
+    const question = questions.find((q) => q.id === id);
+    if (!question) return;
+
+    setRegeneratingId(id);
+    try {
+      const text = localStorage.getItem("copiloto_text") ?? "";
+      const meta = JSON.parse(localStorage.getItem("copiloto_meta") ?? "{}");
+      const subject = meta.subject ?? "la materia";
+
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text,
+          prompt: `Regenerá UNA sola pregunta de tipo "${question.type}" sobre ${subject}. Devolvé un array con una única pregunta.`,
+        }),
+      });
+
+      if (!res.ok) throw new Error("API error");
+      const { questions: newQs }: { questions: Question[] } = await res.json();
+      if (!newQs?.length) throw new Error("No question returned");
+
+      const newQ: Question = { ...newQs[0], id: question.id };
+      setQuestions((prev) => prev.map((q) => (q.id === id ? newQ : q)));
+    } catch {
+      // silently fail — question stays unchanged
+    } finally {
+      setRegeneratingId(null);
+    }
   }
 
   function handleDiscard(id: string) {
@@ -186,6 +239,7 @@ export default function EditorPage() {
               onUpdate={handleUpdate}
               onRegenerate={handleRegenerate}
               onDiscard={handleDiscard}
+              isRegenerating={regeneratingId === q.id}
             />
           ))}
         </div>
