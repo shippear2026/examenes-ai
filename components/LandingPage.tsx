@@ -1,12 +1,15 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import DropZone from "./DropZone";
 import TemplateSelector, { type TemplateId } from "./TemplateSelector";
 import GeneratingOverlay from "./GeneratingOverlay";
-import { runExamPipeline } from "@/lib/pipeline";
-import type { Question } from "@/lib/types";
+import { runExamPipeline, type PipelinePhase } from "@/lib/pipeline";
+
+/** Pausa mínima para que cada fase del overlay se vea (evita parpadeos). */
+const MIN_PHASE_MS = 700;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export default function LandingPage() {
   const router = useRouter();
@@ -14,29 +17,35 @@ export default function LandingPage() {
   const [prompt, setPrompt] = useState("");
   const [template, setTemplate] = useState<TemplateId>("university");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [phase, setPhase] = useState<PipelinePhase>("extracting");
   const [error, setError] = useState<string | null>(null);
-
-  // Guardamos el trabajo real (extracción + generación) mientras corre el overlay.
-  const workRef = useRef<Promise<Question[]> | null>(null);
 
   const canGenerate = !!file && prompt.trim().length > 0;
 
-  const handleGenerate = () => {
-    if (!canGenerate || !file) return;
+  const handleGenerate = async () => {
+    if (!canGenerate || !file || isGenerating) return;
     setError(null);
+    setPhase("extracting");
     setIsGenerating(true);
-    // Arranca la extracción de texto + generación en paralelo con la animación.
-    workRef.current = runExamPipeline(file, prompt, template);
-  };
 
-  const handleGenerateComplete = useCallback(async () => {
     try {
-      const questions = await workRef.current;
+      // El pipeline reporta cada fase real; agregamos una pausa mínima por
+      // fase para que la animación no parpadee cuando un paso es muy rápido.
+      const { questions, text } = await runExamPipeline(
+        file,
+        prompt,
+        template,
+        (p) => setPhase(p)
+      );
+      await sleep(MIN_PHASE_MS);
+
       if (!questions || questions.length === 0) {
         throw new Error("No se generaron preguntas a partir del material.");
       }
+
       sessionStorage.setItem("exam:questions", JSON.stringify(questions));
       sessionStorage.setItem("exam:template", template);
+      sessionStorage.setItem("exam:text", text);
       router.push("/editor");
     } catch (err) {
       setIsGenerating(false);
@@ -46,13 +55,11 @@ export default function LandingPage() {
           : "Ocurrió un error procesando tu bibliografía."
       );
     }
-  }, [router, template]);
+  };
 
   return (
     <>
-      {isGenerating && (
-        <GeneratingOverlay onComplete={handleGenerateComplete} />
-      )}
+      {isGenerating && <GeneratingOverlay phase={phase} />}
 
       <div className="flex flex-col flex-1 min-h-screen">
         {/* Header */}

@@ -1,17 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import type { PipelinePhase } from "@/lib/pipeline";
 
 interface GeneratingOverlayProps {
-  /** Se llama cuando la animación de los 2 agentes terminó. */
-  onComplete: () => void;
+  /** Fase actual del pipeline real. */
+  phase: PipelinePhase;
 }
 
-const STEPS = [
+const STEPS: { id: PipelinePhase; label: string; sublabel: string }[] = [
+  {
+    id: "extracting",
+    label: "Leyendo tu bibliografía...",
+    sublabel: "Extrayendo el texto del PDF",
+  },
   {
     id: "generating",
     label: "Agente generador armando preguntas...",
-    sublabel: "Analizando bibliografía y creando borradores",
+    sublabel: "Analizando el material y creando borradores",
   },
   {
     id: "supervising",
@@ -45,24 +50,10 @@ function CheckIcon() {
   );
 }
 
-export default function GeneratingOverlay({ onComplete }: GeneratingOverlayProps) {
-  // 0 = generando, 1 = supervisando, 2 = listo
-  const [phase, setPhase] = useState(0);
-
-  useEffect(() => {
-    // Animación secuencial de los dos agentes. El trabajo real corre en paralelo
-    // en LandingPage (workRef); acá solo controlamos el ritmo visual.
-    const t1 = setTimeout(() => setPhase(1), 2200);
-    const t2 = setTimeout(() => setPhase(2), 4400);
-    const t3 = setTimeout(() => onComplete(), 5000);
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-    };
-  }, [onComplete]);
-
-  const progressPct = phase === 0 ? 30 : phase === 1 ? 75 : 100;
+export default function GeneratingOverlay({ phase }: GeneratingOverlayProps) {
+  const currentIndex = STEPS.findIndex((s) => s.id === phase);
+  const progressPct =
+    currentIndex === 0 ? 25 : currentIndex === 1 ? 60 : 90;
 
   return (
     <div
@@ -102,9 +93,9 @@ export default function GeneratingOverlay({ onComplete }: GeneratingOverlayProps
 
         <div className="flex flex-col gap-3">
           {STEPS.map((s, index) => {
-            const isDone = phase > index;
-            const isActive = phase === index;
-            const isPending = phase < index;
+            const isDone = currentIndex > index;
+            const isActive = currentIndex === index;
+            const isPending = currentIndex < index;
 
             return (
               <div
