@@ -1,5 +1,6 @@
 @import "tailwindcss";
 
+/* design tokens */
 :root {
   --background: #09090f;
   --surface: #111118;
@@ -29,7 +30,7 @@
   --color-success: var(--success);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  --radius: var(--radius);
+  --radius: 0.75rem;
 }
 
 body {

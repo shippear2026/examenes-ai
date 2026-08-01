@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import QuestionCard from "./QuestionCard";
 import { mockQuestions } from "@/lib/mockQuestions";
@@ -8,22 +8,33 @@ import type { Question } from "@/lib/types";
 
 export default function EditorPage() {
   const router = useRouter();
-  const [questions, setQuestions] = useState<Question[]>(mockQuestions);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
 
-  // Carga las preguntas generadas a partir del PDF (si venimos del flujo real).
+  // Load questions from sessionStorage (written by LandingPage pipeline via runExamPipeline).
+  // Fall back to mock data when navigating directly for development.
   useEffect(() => {
     try {
       const stored = sessionStorage.getItem("exam:questions");
       if (stored) {
-        const parsed = JSON.parse(stored) as Question[];
+        const parsed: Question[] = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) {
           setQuestions(parsed);
+          return;
         }
       }
     } catch {
-      // Si falla la lectura, se mantienen las preguntas de ejemplo.
+      // ignore parse errors
     }
+    setQuestions(mockQuestions);
   }, []);
+
+  // Persist edits back to sessionStorage so Export page can read them.
+  useEffect(() => {
+    if (questions.length > 0) {
+      sessionStorage.setItem("exam:questions", JSON.stringify(questions));
+    }
+  }, [questions]);
 
   function handleUpdate(id: string, changes: Partial<Question>) {
     setQuestions((prev) =>
@@ -31,9 +42,38 @@ export default function EditorPage() {
     );
   }
 
-  function handleRegenerate(id: string) {
-    // TODO: call AI API to regenerate a single question
-    // For now, pulse a visual indicator (no-op)
+  async function handleRegenerate(id: string) {
+    const question = questions.find((q) => q.id === id);
+    if (!question) return;
+
+    setRegeneratingId(id);
+    try {
+      // Reuse extracted text stored by pipeline, fall back gracefully
+      const text = sessionStorage.getItem("exam:text") ?? "";
+      const template = sessionStorage.getItem("exam:template") ?? "university";
+
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text,
+          subject: template,
+          questionType: question.type,
+          count: 1,
+        }),
+      });
+
+      if (!res.ok) throw new Error("API error");
+      const { questions: newQs }: { questions: Question[] } = await res.json();
+      if (!newQs?.length) throw new Error("No question returned");
+
+      const newQ: Question = { ...newQs[0], id: question.id };
+      setQuestions((prev) => prev.map((q) => (q.id === id ? newQ : q)));
+    } catch {
+      // silently fail — question stays unchanged
+    } finally {
+      setRegeneratingId(null);
+    }
   }
 
   function handleDiscard(id: string) {
@@ -95,10 +135,7 @@ export default function EditorPage() {
             color: "var(--muted)",
           }}
         >
-          <span
-            className="font-semibold"
-            style={{ color: "var(--foreground)" }}
-          >
+          <span className="font-semibold" style={{ color: "var(--foreground)" }}>
             {approvedCount}
           </span>
           preguntas
@@ -131,30 +168,13 @@ export default function EditorPage() {
               border: "1px solid var(--border-bright)",
             }}
           >
-            <div
-              className="flex items-center gap-2 text-xs"
-              style={{
-                color: "var(--accent-bright)",
-              }}
-            >
-              <span
-                className="w-2 h-2 rounded-full"
-                style={{ backgroundColor: "var(--accent-bright)" }}
-              />
+            <div className="flex items-center gap-2 text-xs" style={{ color: "var(--accent-bright)" }}>
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--accent-bright)" }} />
               Agente generador: {approvedCount} preguntas creadas
             </div>
-            <div
-              className="w-px h-4 shrink-0"
-              style={{ backgroundColor: "var(--border)" }}
-            />
-            <div
-              className="flex items-center gap-2 text-xs"
-              style={{ color: "#fbbf24" }}
-            >
-              <span
-                className="w-2 h-2 rounded-full"
-                style={{ backgroundColor: "#fbbf24" }}
-              />
+            <div className="w-px h-4 shrink-0" style={{ backgroundColor: "var(--border)" }} />
+            <div className="flex items-center gap-2 text-xs" style={{ color: "#fbbf24" }}>
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: "#fbbf24" }} />
               Agente supervisor: {questions.filter((q) => q.supervisorNote).length} ajustadas
             </div>
           </div>
@@ -173,12 +193,7 @@ export default function EditorPage() {
                 style={{ backgroundColor: "var(--surface-raised)" }}
               >
                 <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
-                  <path
-                    d="M11 4v14M4 11h14"
-                    stroke="var(--muted)"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                  />
+                  <path d="M11 4v14M4 11h14" stroke="var(--muted)" strokeWidth="1.8" strokeLinecap="round" />
                 </svg>
               </div>
               <div>
@@ -201,6 +216,7 @@ export default function EditorPage() {
               onUpdate={handleUpdate}
               onRegenerate={handleRegenerate}
               onDiscard={handleDiscard}
+              isRegenerating={regeneratingId === q.id}
             />
           ))}
         </div>
@@ -216,20 +232,10 @@ export default function EditorPage() {
         }}
       >
         <div className="max-w-2xl mx-auto flex items-center gap-3">
-          {/* Left: summary */}
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            <div
-              className="flex items-center gap-1.5 text-xs"
-              style={{ color: "var(--muted)" }}
-            >
+            <div className="flex items-center gap-1.5 text-xs" style={{ color: "var(--muted)" }}>
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                <path
-                  d="M2 7l3.5 3.5L12 3"
-                  stroke="var(--success)"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
+                <path d="M2 7l3.5 3.5L12 3" stroke="var(--success)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               <span>
                 <span className="font-semibold" style={{ color: "var(--foreground)" }}>
@@ -240,17 +246,15 @@ export default function EditorPage() {
             </div>
           </div>
 
-          {/* Right: export button */}
           <button
             type="button"
             onClick={() => router.push("/export")}
             disabled={approvedCount === 0}
-            className="flex items-center gap-2 rounded-xl font-semibold text-sm h-11 px-6 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-bright disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0"
+            className="flex items-center gap-2 rounded-xl font-semibold text-sm h-11 px-6 transition-all duration-200 focus:outline-none focus-visible:ring-2 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0"
             style={
               approvedCount > 0
                 ? {
-                    background:
-                      "linear-gradient(135deg, var(--accent) 0%, #4f46e5 100%)",
+                    background: "linear-gradient(135deg, var(--accent) 0%, #4f46e5 100%)",
                     color: "white",
                     boxShadow: "0 4px 20px var(--accent-glow)",
                   }
@@ -262,19 +266,8 @@ export default function EditorPage() {
             }
           >
             <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
-              <path
-                d="M7.5 1.5v8M4.5 6.5l3 3 3-3"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <path
-                d="M2 10v2.5a.5.5 0 0 0 .5.5h10a.5.5 0 0 0 .5-.5V10"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
+              <path d="M7.5 1.5v8M4.5 6.5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M2 10v2.5a.5.5 0 0 0 .5.5h10a.5.5 0 0 0 .5-.5V10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
             Exportar examen
           </button>
@@ -289,39 +282,15 @@ function StepCrumb({ label, active, done }: { label: string; active?: boolean; d
     <span
       className="text-xs font-medium px-2.5 py-1 rounded-full"
       style={{
-        backgroundColor: active
-          ? "var(--accent-glow)"
-          : done
-          ? "transparent"
-          : "transparent",
-        border: active
-          ? "1px solid var(--accent-border)"
-          : "1px solid transparent",
-        color: active
-          ? "var(--accent-bright)"
-          : done
-          ? "var(--foreground)"
-          : "var(--muted)",
-        textDecoration: done ? "none" : "none",
-        opacity: done ? 0.7 : 1,
+        backgroundColor: active ? "var(--accent-glow)" : "transparent",
+        border: active ? "1px solid var(--accent-border)" : "1px solid transparent",
+        color: active ? "var(--accent-bright)" : done ? "var(--foreground)" : "var(--muted)",
+        opacity: done && !active ? 0.7 : 1,
       }}
     >
       {done && (
-        <svg
-          width="9"
-          height="9"
-          viewBox="0 0 9 9"
-          fill="none"
-          className="inline mr-1"
-          aria-hidden="true"
-        >
-          <path
-            d="M1.5 4.5l2 2L7 2"
-            stroke="var(--success)"
-            strokeWidth="1.3"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
+        <svg width="9" height="9" viewBox="0 0 9 9" fill="none" className="inline mr-1" aria-hidden="true">
+          <path d="M1.5 4.5l2 2L7 2" stroke="var(--success)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       )}
       {label}
