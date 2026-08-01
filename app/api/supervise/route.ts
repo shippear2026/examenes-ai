@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 import { generateObject } from "ai";
 import { z } from "zod";
+import { examModel } from "@/lib/ai";
 import type { Question } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
-
-const MODEL = "google/gemini-3.5-flash";
 
 const reviewedSchema = z.object({
   questions: z.array(
@@ -19,9 +18,10 @@ const reviewedSchema = z.object({
       sourcePage: z.number().nullable().optional(),
       supervisorNote: z
         .string()
+        .max(160)
         .optional()
         .describe(
-          "Nota breve SOLO si ajustaste la pregunta, ej: 'Ajustada: opción C era ambigua'. Omitir si no la tocaste."
+          "UNA sola frase de máximo 160 caracteres, SOLO si ajustaste la pregunta, ej: 'Ajustada: opción C era ambigua'. Omitir si no la tocaste. Nunca repitas palabras."
         ),
     })
   ),
@@ -45,7 +45,8 @@ export async function POST(req: Request) {
     }
 
     const { object } = await generateObject({
-      model: MODEL,
+      model: examModel,
+      temperature: 0.3,
       schema: reviewedSchema,
       system: `Sos un agente supervisor pedagógico de exámenes universitarios.
 Recibís preguntas de un agente generador y las revisás por: claridad, ausencia de ambigüedad,
@@ -54,9 +55,10 @@ dificultad pareja, ausencia de opciones "trampa" y coherencia de la respuesta co
 Reglas:
 - Mantené el MISMO id de cada pregunta.
 - Corregí solo lo necesario; no reescribas preguntas que ya están bien.
-- Cuando ajustes una pregunta, agregá un "supervisorNote" breve explicando el cambio.
+- Cuando ajustes una pregunta, agregá un "supervisorNote" de UNA sola frase corta (máximo 160 caracteres).
+- Nunca repitas palabras ni generes texto de relleno en las notas.
 - Si no tocás una pregunta, NO le pongas supervisorNote.
-- Devolvé además "cambios": la lista legible de todos los ajustes.`,
+- Devolvé además "cambios": la lista legible y breve de todos los ajustes.`,
       prompt: `PREGUNTAS A REVISAR (JSON):
 ${JSON.stringify(questions, null, 2)}
 ${instrucciones ? `\nINSTRUCCIONES ADICIONALES DEL DOCENTE:\n${instrucciones}` : ""}

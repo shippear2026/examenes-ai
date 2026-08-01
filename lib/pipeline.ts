@@ -48,7 +48,8 @@ export async function runExamPipeline(
   const questionType = inferQuestionType(prompt);
   const count = inferCount(prompt);
 
-  const res = await fetch("/api/generate", {
+  // Agente 1: generador
+  const genRes = await fetch("/api/generate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -59,14 +60,35 @@ export async function runExamPipeline(
     }),
   });
 
-  const data = (await res.json().catch(() => ({}))) as {
+  const genData = (await genRes.json().catch(() => ({}))) as {
     questions?: Question[];
     error?: string;
   };
 
-  if (!res.ok || !data.questions) {
-    throw new Error(data.error ?? "No se pudieron generar las preguntas.");
+  if (!genRes.ok || !genData.questions) {
+    throw new Error(genData.error ?? "No se pudieron generar las preguntas.");
   }
 
-  return data.questions;
+  // Agente 2: supervisor. Revisa el borrador y agrega notas donde ajustó.
+  // Si el supervisor falla, seguimos con las preguntas del generador.
+  try {
+    const supRes = await fetch("/api/supervise", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ questions: genData.questions, instrucciones: prompt }),
+    });
+
+    if (supRes.ok) {
+      const supData = (await supRes.json().catch(() => ({}))) as {
+        questions?: Question[];
+      };
+      if (supData.questions && supData.questions.length > 0) {
+        return supData.questions;
+      }
+    }
+  } catch {
+    // fallback silencioso a las preguntas del generador
+  }
+
+  return genData.questions;
 }
