@@ -17,15 +17,42 @@ export default function ExportPage() {
   const router = useRouter();
   const [activeTema, setActiveTema] = useState<ExamTema>("A");
   const [template, setTemplate] = useState<TemplateStyle>("university");
+  const [includeKey, setIncludeKey] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
-  const handleDownload = useCallback(() => {
+  const handleDownload = useCallback(async () => {
     setDownloading(true);
-    // Simulate PDF generation delay — will be replaced with real PDF lib
-    setTimeout(() => {
+    try {
+      const res = await fetch("/api/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          template,
+          includeKey,
+          meta: examMeta,
+          temas: examByTema,
+        }),
+      });
+      if (!res.ok) throw new Error("No se pudo generar el PDF");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `examen-${examMeta.subject
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/(^-|-$)/g, "")}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("[v0] export error:", err);
+      alert("No se pudo generar el PDF. Intentá de nuevo.");
+    } finally {
       setDownloading(false);
-    }, 1800);
-  }, []);
+    }
+  }, [template, includeKey]);
 
   return (
     <div
@@ -177,7 +204,8 @@ export default function ExportPage() {
           })}
         </div>
 
-        {/* Template selector */}
+        {/* Template selector + answer key toggle */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="flex items-center gap-1" role="group" aria-label="Plantilla de diseño">
           <span className="text-xs font-medium mr-2" style={{ color: "var(--muted)" }}>
             Plantilla:
@@ -208,6 +236,31 @@ export default function ExportPage() {
             );
           })}
         </div>
+
+        {/* Answer key toggle */}
+        <button
+          onClick={() => setIncludeKey((v) => !v)}
+          role="switch"
+          aria-checked={includeKey}
+          className="flex items-center gap-2 text-xs font-medium transition-colors"
+          style={{ color: includeKey ? "var(--accent-bright)" : "var(--muted)" }}
+        >
+          <span
+            className="relative inline-flex h-4 w-7 items-center rounded-full transition-colors"
+            style={{
+              background: includeKey ? "var(--accent)" : "var(--border-bright)",
+            }}
+          >
+            <span
+              className="inline-block h-3 w-3 rounded-full bg-white transition-transform"
+              style={{
+                transform: includeKey ? "translateX(13px)" : "translateX(2px)",
+              }}
+            />
+          </span>
+          Incluir clave de respuestas
+        </button>
+      </div>
       </div>
 
       {/* Preview area */}
