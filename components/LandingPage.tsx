@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import DropZone from "./DropZone";
 import TemplateSelector, { type TemplateId } from "./TemplateSelector";
 import GeneratingOverlay from "./GeneratingOverlay";
+import { runExamPipeline } from "@/lib/pipeline";
+import type { Question } from "@/lib/types";
 
 export default function LandingPage() {
   const router = useRouter();
@@ -12,18 +14,39 @@ export default function LandingPage() {
   const [prompt, setPrompt] = useState("");
   const [template, setTemplate] = useState<TemplateId>("university");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Guardamos el trabajo real (extracción + generación) mientras corre el overlay.
+  const workRef = useRef<Promise<Question[]> | null>(null);
 
   const canGenerate = !!file && prompt.trim().length > 0;
 
   const handleGenerate = () => {
-    if (!canGenerate) return;
+    if (!canGenerate || !file) return;
+    setError(null);
     setIsGenerating(true);
+    // Arranca la extracción de texto + generación en paralelo con la animación.
+    workRef.current = runExamPipeline(file, prompt, template);
   };
 
-  const handleGenerateComplete = useCallback(() => {
-    setIsGenerating(false);
-    router.push("/editor");
-  }, [router]);
+  const handleGenerateComplete = useCallback(async () => {
+    try {
+      const questions = await workRef.current;
+      if (!questions || questions.length === 0) {
+        throw new Error("No se generaron preguntas a partir del material.");
+      }
+      sessionStorage.setItem("exam:questions", JSON.stringify(questions));
+      sessionStorage.setItem("exam:template", template);
+      router.push("/editor");
+    } catch (err) {
+      setIsGenerating(false);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Ocurrió un error procesando tu bibliografía."
+      );
+    }
+  }, [router, template]);
 
   return (
     <>
@@ -251,6 +274,36 @@ export default function LandingPage() {
                       ? "Falta subir el archivo PDF"
                       : "Falta describir el examen"}
                   </p>
+                )}
+
+                {error && (
+                  <div
+                    role="alert"
+                    className="flex items-start gap-2 rounded-xl px-3.5 py-3 text-xs leading-relaxed"
+                    style={{
+                      backgroundColor: "rgba(239,68,68,0.08)",
+                      border: "1px solid rgba(239,68,68,0.3)",
+                      color: "#fca5a5",
+                    }}
+                  >
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 14 14"
+                      fill="none"
+                      aria-hidden="true"
+                      className="mt-0.5 shrink-0"
+                    >
+                      <circle cx="7" cy="7" r="6" stroke="currentColor" strokeWidth="1.2" />
+                      <path
+                        d="M7 4v3.5M7 9.5v.01"
+                        stroke="currentColor"
+                        strokeWidth="1.2"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    <span>{error}</span>
+                  </div>
                 )}
               </div>
             </div>

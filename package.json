@@ -10,9 +10,12 @@
   },
   "dependencies": {
     "@react-pdf/renderer": "^4.5.1",
+    "ai": "^7.0.47",
     "next": "16.2.12",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "unpdf": "^1.8.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
