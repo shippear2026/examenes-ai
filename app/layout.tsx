@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ExamenIA — Extracción de material",
+  title: "Estudiá con tus apuntes",
   description:
-    "Subí un PDF de apuntes y extraé su texto página por página para generar exámenes con citas exactas.",
+    "Subí tus apuntes y practicá con preguntas hechas para vos. Fácil y paso a paso.",
 };
 
 export default function RootLayout({
@@ -25,7 +25,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="es"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased bg-background`}
     >
       <body className="min-h-full flex flex-col">{children}</body>
