@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import QuestionCard from "./QuestionCard";
 import { mockQuestions } from "@/lib/mockQuestions";
@@ -9,6 +9,21 @@ import type { Question } from "@/lib/types";
 export default function EditorPage() {
   const router = useRouter();
   const [questions, setQuestions] = useState<Question[]>(mockQuestions);
+
+  // Carga las preguntas generadas a partir del PDF (si venimos del flujo real).
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem("exam:questions");
+      if (stored) {
+        const parsed = JSON.parse(stored) as Question[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setQuestions(parsed);
+        }
+      }
+    } catch {
+      // Si falla la lectura, se mantienen las preguntas de ejemplo.
+    }
+  }, []);
 
   function handleUpdate(id: string, changes: Partial<Question>) {
     setQuestions((prev) =>
