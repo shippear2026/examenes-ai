@@ -91,7 +91,7 @@ export default function EditorPage() {
       </header>
 
       {/* Main */}
-      <main className="flex-1 flex flex-col items-center px-4 py-8 sm:py-12 pb-32">
+      <main className="flex-1 flex flex-col items-center px-4 pt-8 sm:pt-12 pb-40">
         <div className="w-full max-w-2xl flex flex-col gap-6">
 
           {/* Page heading */}

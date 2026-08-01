@@ -279,7 +279,7 @@ export default function QuestionCard({
       )}
 
       {/* Action buttons */}
-      <div className="flex items-center gap-2 pt-1 border-t" style={{ borderColor: "var(--border)" }}>
+      <div className="flex items-center gap-2 pt-1">
         {isEditing ? (
           <>
             <button
