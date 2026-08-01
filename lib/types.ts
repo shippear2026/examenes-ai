@@ -9,3 +9,16 @@ export type Question = {
   sourcePage?: number;
   supervisorNote?: string;
 };
+
+export type SuperviseRequest = {
+  questions: Question[];
+  /** Instrucciones opcionales del profe (tono, dificultad, etc.) */
+  instrucciones?: string;
+};
+
+export type SuperviseResponse = {
+  /** Preguntas corregidas por el supervisor (mismo shape que las de entrada) */
+  questions: Question[];
+  /** Lista legible de ajustes, ej: "Ajustada pregunta 7: opción C era ambigua" */
+  cambios: string[];
+};
