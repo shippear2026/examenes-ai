@@ -9,8 +9,8 @@ import type {
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-/** Modelo vía Vercel AI Gateway (zero config en v0). */
-const MODEL = "anthropic/claude-sonnet-4.5";
+/** Modelo vía Vercel AI Gateway (Gemini de Google, zero config en v0). */
+const MODEL = "google/gemini-3.6-flash";
 
 /** Límite de caracteres del material para acotar el prompt. */
 const MAX_SOURCE_CHARS = 40_000;

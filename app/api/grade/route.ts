@@ -5,7 +5,8 @@ import type { GradeItem, GradeResponse } from "@/lib/types";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const MODEL = "anthropic/claude-sonnet-4.5";
+/** Modelo vía Vercel AI Gateway (Gemini de Google, zero config en v0). */
+const MODEL = "google/gemini-3.6-flash";
 
 const resultsSchema = z.object({
   results: z.array(
