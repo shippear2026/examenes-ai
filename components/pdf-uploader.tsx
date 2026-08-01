@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import type { ExtractResponse } from "@/lib/types";
+import { ExamStudio } from "@/components/exam-studio";
 
 type ItemStatus = "loading" | "success" | "error";
 
@@ -126,6 +127,15 @@ export function PdfUploader() {
 
   const anyLoading = items.some((it) => it.status === "loading");
 
+  // Texto combinado de todos los PDFs procesados con éxito, con encabezado por
+  // archivo para que el generador pueda citar la fuente correcta.
+  const successful = items.filter(
+    (it) => it.status === "success" && it.result,
+  );
+  const combinedText = successful
+    .map((it) => `### ${it.result!.filename}\n${it.result!.fullText}`)
+    .join("\n\n");
+
   return (
     <div className="flex flex-col gap-6">
       {/* Dropzone */}
@@ -211,6 +221,13 @@ export function PdfUploader() {
           />
         ))}
       </div>
+
+      {/* Generador de examen: aparece cuando hay al menos un PDF extraído */}
+      {successful.length > 0 && (
+        <div className="mt-2 border-t border-border pt-8">
+          <ExamStudio sourceText={combinedText} />
+        </div>
+      )}
     </div>
   );
 }
